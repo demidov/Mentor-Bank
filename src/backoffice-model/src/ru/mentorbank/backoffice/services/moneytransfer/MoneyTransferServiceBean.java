@@ -1,13 +1,13 @@
 package ru.mentorbank.backoffice.services.moneytransfer;
 
+import java.util.Calendar;
+
 import ru.mentorbank.backoffice.dao.OperationDao;
-import ru.mentorbank.backoffice.model.stoplist.JuridicalStopListRequest;
-import ru.mentorbank.backoffice.model.stoplist.StopListInfo;
-import ru.mentorbank.backoffice.model.stoplist.StopListStatus;
-import ru.mentorbank.backoffice.model.transfer.AccountInfo;
-import ru.mentorbank.backoffice.model.transfer.JuridicalAccountInfo;
-import ru.mentorbank.backoffice.model.transfer.PhysicalAccountInfo;
-import ru.mentorbank.backoffice.model.transfer.TransferRequest;
+import ru.mentorbank.backoffice.dao.exception.OperationDaoException;
+import ru.mentorbank.backoffice.model.Account;
+import ru.mentorbank.backoffice.model.Operation;
+import ru.mentorbank.backoffice.model.stoplist.*;
+import ru.mentorbank.backoffice.model.transfer.*;
 import ru.mentorbank.backoffice.services.accounts.AccountService;
 import ru.mentorbank.backoffice.services.moneytransfer.exceptions.TransferException;
 import ru.mentorbank.backoffice.services.stoplist.StopListService;
@@ -63,9 +63,29 @@ public class MoneyTransferServiceBean implements MoneyTransferSerice {
 			dstStopListInfo = getStopListInfo(request.getDstAccount());
 		}
 
-		private void saveOperation() {
-			// TODO: Необходимо сделать вызов операции saveOperation и сделать
-			// соответствующий тест вызова операции operationDao.saveOperation()
+		private void saveOperation() throws TransferException {
+			Operation operation = createNewOperation();
+			try {
+				operationDao.saveOperation(operation);
+			} catch (OperationDaoException e) {
+				throw new TransferException(e.getMessage());
+			}
+		}
+		
+		private Operation createNewOperation(){
+			Operation operation = new Operation();
+			operation.setCreateDate(Calendar.getInstance());
+			operation.setSrcStoplistInfo(srcStopListInfo);
+			operation.setDstStoplistInfo(dstStopListInfo);
+
+			Account srcAccount = new Account();
+			srcAccount.setAccountNumber(request.getSrcAccount().getAccountNumber());
+			Account dstAccount = new Account();
+			dstAccount.setAccountNumber(request.getDstAccount().getAccountNumber());
+
+			operation.setSrcAccount(srcAccount);
+			operation.setDstAccount(dstAccount);
+			return operation;
 		}
 
 		private void transferDo() throws TransferException {
@@ -90,9 +110,20 @@ public class MoneyTransferServiceBean implements MoneyTransferSerice {
 						.getJuridicalStopListInfo(request);
 				return stopListInfo;
 			} else if (accountInfo instanceof PhysicalAccountInfo) {
-				// TODO: Сделать вызов stopListService для физических лиц
+				return stopListService
+						.getPhysicalStopListInfo(getPhysicalStopListRequest((PhysicalAccountInfo)accountInfo));
 			}
 			return null;
+		}
+		
+		private PhysicalStopListRequest getPhysicalStopListRequest(PhysicalAccountInfo accountInfo){
+			PhysicalStopListRequest request = new PhysicalStopListRequest();
+			request.setDocumentNumber(accountInfo.getDocumentNumber());
+			request.setDocumentSeries(accountInfo.getDocumentSeries());
+			request.setFirstname(accountInfo.getFirstname());
+			request.setLastname(accountInfo.getLastname());
+			request.setMiddlename(accountInfo.getMiddlename());
+			return request;
 		}
 
 		private boolean processStopListStatus(StopListInfo stopListInfo)
@@ -104,7 +135,7 @@ public class MoneyTransferServiceBean implements MoneyTransferSerice {
 		}
 
 		private void verifySrcBalance() throws TransferException {
-			if (!accountService.verifyBalance(request.getDstAccount()))
+			if (!accountService.verifyBalance(request.getSrcAccount()))
 				throw new TransferException(LOW_BALANCE_ERROR_MESSAGE);
 		}
 	}
